@@ -1,0 +1,491 @@
+---
+title: 'Installation'
+description: 'Complete installation and configuration guide for YouTube Manager'
+---
+
+## Prerequisites
+
+Before installing YouTube Manager, ensure you have the following:
+
+<CardGroup cols={2}>
+  <Card title="Python" icon="python">
+    Python 3.8 or higher
+  </Card>
+  <Card title="MySQL" icon="database">
+    MySQL 5.7+ or 8.0+
+  </Card>
+  <Card title="Google Cloud Project" icon="google">
+    With YouTube Data API v3 enabled
+  </Card>
+  <Card title="Git" icon="git">
+    For cloning the repository
+  </Card>
+</CardGroup>
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone <your-repository-url>
+cd youtube-manager
+```
+
+### 2. Create Virtual Environment
+
+It's recommended to use a virtual environment to isolate project dependencies:
+
+<CodeGroup>
+```bash macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
+```
+
+```bash Windows (CMD)
+python -m venv venv
+venv\Scripts\activate
+```
+
+```bash Windows (PowerShell)
+python -m venv venv
+venv\Scripts\Activate.ps1
+```
+</CodeGroup>
+
+### 3. Install Dependencies
+
+Install all required Python packages from `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+<Details>
+  <summary>View all dependencies</summary>
+
+  The project uses the following key packages:
+
+  ```txt requirements.txt
+  asgiref==3.11.0
+  Django==6.0.1
+  google-api-python-client==2.188.0
+  google-auth==2.48.0
+  google-auth-oauthlib==1.2.4
+  mysqlclient==2.2.7
+  python-decouple==3.8
+  requests==2.32.5
+  ```
+
+  **Core dependencies:**
+  - **Django 6.0.1** - Web framework
+  - **mysqlclient 2.2.7** - MySQL database adapter
+  - **google-api-python-client** - YouTube Data API v3 client
+  - **google-auth-oauthlib** - OAuth 2.0 authentication
+  - **python-decouple** - Environment variable management
+</Details>
+
+## Database Configuration
+
+### 1. Install MySQL
+
+If you don't have MySQL installed:
+
+<CodeGroup>
+```bash macOS (Homebrew)
+brew install mysql
+brew services start mysql
+```
+
+```bash Ubuntu/Debian
+sudo apt update
+sudo apt install mysql-server
+sudo systemctl start mysql
+```
+
+```bash Windows
+# Download MySQL installer from:
+# https://dev.mysql.com/downloads/installer/
+```
+</CodeGroup>
+
+### 2. Create Database
+
+Log into MySQL and create your database:
+
+```bash
+mysql -u root -p
+```
+
+```sql
+CREATE DATABASE youtube_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+<Note>
+  The `utf8mb4` character set is required to support emoji and special characters in video titles and descriptions
+</Note>
+
+### 3. Create MySQL User (Optional)
+
+For better security, create a dedicated database user:
+
+```sql
+CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY 'your_secure_password';
+GRANT ALL PRIVILEGES ON youtube_manager.* TO 'youtube_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+## Google Cloud Setup
+
+### 1. Create Google Cloud Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Click **Select a project** → **New Project**
+3. Enter a project name (e.g., "YouTube Manager")
+4. Click **Create**
+
+### 2. Enable YouTube Data API v3
+
+1. In your project, navigate to **APIs & Services** → **Library**
+2. Search for "YouTube Data API v3"
+3. Click on it and press **Enable**
+
+### 3. Configure OAuth Consent Screen
+
+1. Go to **APIs & Services** → **OAuth consent screen**
+2. Select **External** user type (or Internal if using Google Workspace)
+3. Fill in the required information:
+   - App name: "YouTube Manager"
+   - User support email: Your email
+   - Developer contact: Your email
+4. Add scopes:
+   - `https://www.googleapis.com/auth/youtube`
+   - `https://www.googleapis.com/auth/youtube.upload`
+   - `https://www.googleapis.com/auth/userinfo.email`
+   - `https://www.googleapis.com/auth/userinfo.profile`
+5. Save and continue
+
+<Warning>
+  For production use, you'll need to submit your app for Google verification
+</Warning>
+
+### 4. Create OAuth 2.0 Credentials
+
+1. Go to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **OAuth client ID**
+3. Select **Web application**
+4. Configure:
+   - Name: "YouTube Manager Web Client"
+   - Authorized JavaScript origins: `http://localhost:8000`
+   - Authorized redirect URIs: `http://localhost:8000/oauth/callback/`
+5. Click **Create**
+6. Download the JSON file
+7. Rename it to `client_secret.json`
+8. Place it in your project root directory (same level as `manage.py`)
+
+<Warning>
+  **Security:** Never commit `client_secret.json` to version control. Add it to `.gitignore`
+</Warning>
+
+## Environment Configuration
+
+### 1. Create .env File
+
+Create a `.env` file in your project root:
+
+```bash
+touch .env
+```
+
+### 2. Configure Environment Variables
+
+Add the following configuration to your `.env` file:
+
+```bash .env
+# Django Settings
+SECRET_KEY=your-django-secret-key-here
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database Configuration
+DB_NAME=youtube_manager
+DB_USER=root
+DB_PASS=your_mysql_password
+DB_HOST=localhost
+DB_PORT=3306
+
+# Google OAuth Callback
+GOOGLE_CALLBACK_URL=http://localhost:8000/oauth/callback/
+```
+
+<Tip>
+  **Generate a secure SECRET_KEY:**
+  ```bash
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  ```
+</Tip>
+
+### Environment Variables Reference
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|----------|
+| `SECRET_KEY` | Django secret key for cryptographic signing | Yes | - |
+| `DEBUG` | Enable/disable debug mode | Yes | - |
+| `ALLOWED_HOSTS` | Comma-separated list of allowed hosts | Yes | - |
+| `DB_NAME` | MySQL database name | Yes | - |
+| `DB_USER` | MySQL username | Yes | - |
+| `DB_PASS` | MySQL password | Yes | - |
+| `DB_HOST` | MySQL host | Yes | `localhost` |
+| `DB_PORT` | MySQL port | Yes | `3306` |
+| `GOOGLE_CALLBACK_URL` | OAuth redirect URI | Yes | - |
+
+<Info>
+  The app uses `python-decouple` for environment variable management (see `youtube_project/settings.py:2`)
+</Info>
+
+## Database Migrations
+
+Apply database migrations to create the necessary tables:
+
+```bash
+python manage.py migrate
+```
+
+This creates the following models:
+
+**VideoGuardado** (`core/models.py:5-18`)
+- Stores saved/favorite videos from YouTube searches
+- Fields: `user`, `video_id`, `titulo`, `canal`, `descripcion`, `miniatura_url`, `fecha_guardado`
+- Unique constraint on `(user, video_id)`
+
+**VideoSubido** (`core/models.py:21-36`)
+- Tracks videos uploaded through the application
+- Fields: `user`, `video_id`, `titulo`, `descripcion`, `estado`, `fecha_subida`
+- Privacy states: `private`, `public`, `unlisted`
+
+## Create Superuser (Optional)
+
+Create an admin user to access Django's admin interface:
+
+```bash
+python manage.py createsuperuser
+```
+
+Follow the prompts to set:
+- Username
+- Email address
+- Password
+
+<Note>
+  This is optional - regular users authenticate via Google OAuth. The superuser is mainly for accessing `/admin/` panel
+</Note>
+
+## Verify Installation
+
+### 1. Run Development Server
+
+```bash
+python manage.py runserver
+```
+
+You should see:
+
+```
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+```
+
+### 2. Check Installation
+
+Verify these URLs are accessible:
+
+- `http://localhost:8000/` - Home page (redirects to login if not authenticated)
+- `http://localhost:8000/admin/` - Django admin panel
+- `http://localhost:8000/login/` - Login page
+
+### 3. Test OAuth Flow
+
+1. Navigate to `http://localhost:8000/login/`
+2. Click "Login with Google"
+3. Authenticate with your Google account
+4. Grant the requested permissions
+5. You should be redirected to the home page (`/`)
+
+<Warning>
+  If you see "redirect_uri_mismatch" error, verify that `http://localhost:8000/oauth/callback/` is added to your Google Cloud Console OAuth credentials
+</Warning>
+
+## Project Structure
+
+Understand the key files and directories:
+
+```
+youtube-manager/
+├── manage.py                 # Django management script
+├── requirements.txt          # Python dependencies
+├── client_secret.json        # Google OAuth credentials (DO NOT COMMIT)
+├── .env                      # Environment variables (DO NOT COMMIT)
+├── youtube_project/          # Django project settings
+│   ├── settings.py          # Main configuration
+│   ├── urls.py              # URL routing
+│   └── wsgi.py              # WSGI configuration
+└── core/                     # Main application
+    ├── models.py            # Database models
+    ├── views.py             # View functions and API logic
+    ├── forms.py             # Django forms
+    ├── admin.py             # Admin configuration
+    ├── templates/           # HTML templates
+    └── migrations/          # Database migrations
+```
+
+## Configuration Details
+
+### Database Settings
+
+The app is configured to use MySQL with UTF-8 support (`youtube_project/settings.py:66-79`):
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASS'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
+    }
+}
+```
+
+### OAuth Configuration
+
+YouTube API scopes required (`youtube_project/settings.py:129-135`):
+
+```python
+SCOPES = [
+    'https://www.googleapis.com/auth/youtube',
+    'https://www.googleapis.com/auth/youtube.upload',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid'
+]
+```
+
+<Info>
+  Development mode allows insecure HTTP transport (`settings.py:123`). For production, use HTTPS
+</Info>
+
+### Static & Media Files
+
+Static files are served from `staticfiles/` and uploaded videos are temporarily stored in `media/`:
+
+```python
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+```
+
+Collect static files for production:
+
+```bash
+python manage.py collectstatic
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Follow our quickstart to upload your first video
+  </Card>
+  <Card title="Features" icon="stars" href="/features/authentication">
+    Explore all YouTube Manager features
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/models">
+    Learn about views, models, and forms
+  </Card>
+  <Card title="Configuration" icon="wrench" href="/configuration/environment">
+    Set up your environment configuration
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="mysqlclient installation fails">
+    On macOS:
+    ```bash
+    brew install mysql-client
+    export PATH="/usr/local/opt/mysql-client/bin:$PATH"
+    pip install mysqlclient
+    ```
+
+    On Ubuntu/Debian:
+    ```bash
+    sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
+    pip install mysqlclient
+    ```
+
+    On Windows:
+    ```bash
+    pip install mysqlclient-wheel
+    ```
+  </Accordion>
+
+  <Accordion title="Database connection refused">
+    1. Verify MySQL is running:
+       ```bash
+       # macOS
+       brew services list
+       
+       # Linux
+       sudo systemctl status mysql
+       ```
+    2. Check your `.env` database credentials
+    3. Ensure the database exists: `SHOW DATABASES;` in MySQL
+    4. Test connection:
+       ```bash
+       mysql -u your_user -p your_database
+       ```
+  </Accordion>
+
+  <Accordion title="client_secret.json not found">
+    Ensure `client_secret.json` is in your project root directory (same level as `manage.py`). The path is configured in `settings.py:127`:
+    ```python
+    GOOGLE_CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, 'client_secret.json')
+    ```
+  </Accordion>
+
+  <Accordion title="OAuth scope mismatch">
+    The app uses `OAUTHLIB_RELAX_TOKEN_SCOPE=1` to handle scope mismatches (`settings.py:125`). If you still have issues:
+    1. Clear your browser cookies
+    2. Revoke app access in [Google Account settings](https://myaccount.google.com/permissions)
+    3. Try authenticating again
+  </Accordion>
+
+  <Accordion title="CSRF verification failed">
+    Ensure `ALLOWED_HOSTS` in your `.env` includes the host you're accessing:
+    ```bash
+    ALLOWED_HOSTS=localhost,127.0.0.1
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Production Deployment
+
+<Warning>
+  The current configuration is for development only. For production:
+  
+  1. Set `DEBUG=False` in `.env`
+  2. Remove `OAUTHLIB_INSECURE_TRANSPORT=1` and use HTTPS
+  3. Use a production-grade web server (Gunicorn, uWSGI)
+  4. Configure a reverse proxy (Nginx, Apache)
+  5. Use environment-specific database credentials
+  6. Submit your app for Google OAuth verification
+  7. Set up proper secret management (AWS Secrets Manager, etc.)
+</Warning>

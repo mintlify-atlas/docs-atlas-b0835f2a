@@ -1,0 +1,290 @@
+---
+title: 'Environment Variables'
+description: 'Configure your YouTube Manager application using environment variables'
+icon: 'gear'
+---
+
+## Overview
+
+YouTube Manager uses environment variables for configuration management through the `python-decouple` library. All sensitive configuration should be stored in a `.env` file at the root of your project.
+
+<Warning>
+Never commit your `.env` file to version control. Add it to your `.gitignore` file immediately.
+</Warning>
+
+## Required Environment Variables
+
+### Django Core Settings
+
+<ParamField path="SECRET_KEY" type="string" required>
+  Django's secret key used for cryptographic signing. Must be kept secret in production.
+  
+  **Security Best Practices:**
+  - Generate a unique, random string of at least 50 characters
+  - Use letters, numbers, and special characters
+  - Never share this key or commit it to version control
+  - Rotate periodically in production environments
+  
+  **Generate a secure key:**
+  ```bash
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  ```
+</ParamField>
+
+<ParamField path="DEBUG" type="boolean" required>
+  Enable or disable Django debug mode.
+  
+  **Values:**
+  - `True` - Enable debug mode (development only)
+  - `False` - Disable debug mode (production)
+  
+  <Warning>
+  Always set `DEBUG=False` in production. Debug mode exposes sensitive information and security details.
+  </Warning>
+</ParamField>
+
+<ParamField path="ALLOWED_HOSTS" type="string" required>
+  Comma-separated list of host/domain names that Django can serve.
+  
+  **Examples:**
+  - Development: `localhost,127.0.0.1`
+  - Production: `yourdomain.com,www.yourdomain.com`
+  - All hosts (not recommended): `*`
+  
+  <Note>
+  The `python-decouple` library automatically parses this as a CSV list.
+  </Note>
+</ParamField>
+
+### Database Configuration
+
+<ParamField path="DB_NAME" type="string" required>
+  The name of your MySQL database.
+  
+  **Example:** `youtube_manager`
+</ParamField>
+
+<ParamField path="DB_USER" type="string" required>
+  MySQL database username with appropriate permissions.
+  
+  **Required Permissions:**
+  - SELECT, INSERT, UPDATE, DELETE
+  - CREATE, ALTER, DROP (for migrations)
+  - INDEX, REFERENCES
+</ParamField>
+
+<ParamField path="DB_PASS" type="string" required>
+  Password for the MySQL database user.
+  
+  <Warning>
+  Use a strong password with mixed characters. Never use default or simple passwords in production.
+  </Warning>
+</ParamField>
+
+<ParamField path="DB_HOST" type="string" required>
+  MySQL server hostname or IP address.
+  
+  **Common Values:**
+  - `localhost` - Local development
+  - `127.0.0.1` - Local development (IP)
+  - `db` - Docker container name
+  - Remote IP or hostname for production
+</ParamField>
+
+<ParamField path="DB_PORT" type="string" required>
+  MySQL server port number.
+  
+  **Default:** `3306`
+  
+  <Note>
+  MySQL's default port is 3306. Only change this if your MySQL instance uses a custom port.
+  </Note>
+</ParamField>
+
+## .env File Structure
+
+Create a `.env` file in your project root with the following structure:
+
+<CodeGroup>
+```bash Development
+# Django Core Settings
+SECRET_KEY=your-secret-key-here-make-it-long-and-random-50-chars-min
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database Configuration
+DB_NAME=youtube_manager
+DB_USER=root
+DB_PASS=your_database_password
+DB_HOST=localhost
+DB_PORT=3306
+```
+
+```bash Production
+# Django Core Settings
+SECRET_KEY=production-secret-key-must-be-different-from-dev-key
+DEBUG=False
+ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+
+# Database Configuration
+DB_NAME=youtube_manager_prod
+DB_USER=youtube_app_user
+DB_PASS=strong_production_password_here
+DB_HOST=your-db-server.example.com
+DB_PORT=3306
+```
+
+```bash Docker
+# Django Core Settings
+SECRET_KEY=your-secret-key-here-make-it-long-and-random-50-chars-min
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com
+
+# Database Configuration
+DB_NAME=youtube_manager
+DB_USER=youtube_user
+DB_PASS=docker_db_password
+DB_HOST=db
+DB_PORT=3306
+```
+</CodeGroup>
+
+## Environment-Specific Configuration
+
+### Development Environment
+
+<Steps>
+  <Step title="Create .env file">
+    Create a `.env` file in your project root directory.
+  </Step>
+  
+  <Step title="Set development values">
+    ```bash
+    SECRET_KEY=dev-secret-key-generate-a-new-one
+    DEBUG=True
+    ALLOWED_HOSTS=localhost,127.0.0.1
+    DB_NAME=youtube_manager
+    DB_USER=root
+    DB_PASS=yourpassword
+    DB_HOST=localhost
+    DB_PORT=3306
+    ```
+  </Step>
+  
+  <Step title="Add to .gitignore">
+    Ensure `.env` is in your `.gitignore` file:
+    ```bash
+    echo ".env" >> .gitignore
+    ```
+  </Step>
+</Steps>
+
+### Production Environment
+
+<Steps>
+  <Step title="Generate secure SECRET_KEY">
+    Generate a new, unique secret key for production:
+    ```bash
+    python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+    ```
+  </Step>
+  
+  <Step title="Set production values">
+    - Set `DEBUG=False`
+    - Configure proper `ALLOWED_HOSTS`
+    - Use strong database credentials
+    - Use a dedicated database user with minimal required permissions
+  </Step>
+  
+  <Step title="Secure your .env file">
+    Set appropriate file permissions:
+    ```bash
+    chmod 600 .env
+    ```
+  </Step>
+</Steps>
+
+## Security Best Practices
+
+<Warning>
+**Critical Security Guidelines:**
+
+1. **Never commit `.env` to version control**
+   - Add `.env` to `.gitignore` immediately
+   - Use `.env.example` for documentation (without real values)
+
+2. **Use strong SECRET_KEY**
+   - Minimum 50 characters
+   - Mix of letters, numbers, special characters
+   - Different keys for dev/staging/production
+
+3. **Protect DEBUG setting**
+   - Always `False` in production
+   - Debug mode exposes sensitive information
+
+4. **Secure database credentials**
+   - Strong passwords (16+ characters)
+   - Dedicated database user per environment
+   - Minimal required permissions
+
+5. **Restrict ALLOWED_HOSTS**
+   - Never use `*` in production
+   - List only actual domains serving your app
+</Warning>
+
+## Troubleshooting
+
+### Environment Variables Not Loading
+
+**Problem:** Application can't find environment variables.
+
+**Solutions:**
+1. Verify `.env` file is in the project root (same directory as `manage.py`)
+2. Check file has correct variable names (case-sensitive)
+3. Ensure no extra spaces around `=` signs
+4. Verify `python-decouple` is installed: `pip install python-decouple`
+
+### SECRET_KEY Error
+
+**Problem:** `KeyError: 'SECRET_KEY'` or similar error.
+
+**Solution:**
+```bash
+# Generate a new key
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+
+# Add to .env
+echo "SECRET_KEY=generated-key-here" >> .env
+```
+
+### ALLOWED_HOSTS Configuration Error
+
+**Problem:** `DisallowedHost` error when accessing the application.
+
+**Solution:**
+Add your domain/IP to `ALLOWED_HOSTS` in `.env`:
+```bash
+ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
+```
+
+## Example .env.example File
+
+Create an `.env.example` file (safe to commit) as a template:
+
+```bash
+# Django Core Settings
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Database Configuration
+DB_NAME=youtube_manager
+DB_USER=your_db_user
+DB_PASS=your_db_password
+DB_HOST=localhost
+DB_PORT=3306
+```
+
+<Note>
+Developers can copy `.env.example` to `.env` and fill in their actual values.
+</Note>

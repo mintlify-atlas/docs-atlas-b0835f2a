@@ -1,0 +1,537 @@
+---
+title: 'Google API Configuration'
+description: 'Set up Google Cloud Console and YouTube Data API v3 for OAuth authentication'
+icon: 'google'
+---
+
+## Overview
+
+YouTube Manager uses the YouTube Data API v3 with OAuth 2.0 authentication to access YouTube services. This guide walks you through setting up Google Cloud Console, creating OAuth credentials, and configuring your application.
+
+## Google Cloud Console Setup
+
+### Create a New Project
+
+<Steps>
+  <Step title="Access Google Cloud Console">
+    Navigate to [Google Cloud Console](https://console.cloud.google.com/)
+    
+    Sign in with your Google account.
+  </Step>
+  
+  <Step title="Create New Project">
+    1. Click the project dropdown at the top
+    2. Click "New Project"
+    3. Enter project name: `YouTube Manager` (or your preferred name)
+    4. Select organization (if applicable)
+    5. Click "Create"
+    
+    <Note>
+    Wait a few seconds for the project to be created.
+    </Note>
+  </Step>
+  
+  <Step title="Enable YouTube Data API v3">
+    1. Select your new project
+    2. Navigate to "APIs & Services" > "Library"
+    3. Search for "YouTube Data API v3"
+    4. Click on "YouTube Data API v3"
+    5. Click "Enable"
+    
+    <Note>
+    This may take a minute to activate.
+    </Note>
+  </Step>
+</Steps>
+
+### Configure OAuth Consent Screen
+
+<Steps>
+  <Step title="Access OAuth Consent Screen">
+    Navigate to "APIs & Services" > "OAuth consent screen"
+  </Step>
+  
+  <Step title="Choose User Type">
+    Select user type:
+    - **External** - For public applications (recommended for testing)
+    - **Internal** - Only for Google Workspace organizations
+    
+    Click "Create"
+  </Step>
+  
+  <Step title="Configure App Information">
+    Fill in required fields:
+    
+    **App Information:**
+    - App name: `YouTube Manager`
+    - User support email: Your email address
+    - App logo: (optional)
+    
+    **Developer Contact Information:**
+    - Email addresses: Your email address
+    
+    Click "Save and Continue"
+  </Step>
+  
+  <Step title="Configure Scopes">
+    Click "Add or Remove Scopes" and select:
+    
+    **Required Scopes:**
+    - `.../auth/youtube` - Manage your YouTube account
+    - `.../auth/youtube.upload` - Upload YouTube videos
+    - `.../auth/userinfo.email` - View your email address
+    - `.../auth/userinfo.profile` - View your basic profile info
+    - `openid` - Authenticate using OpenID Connect
+    
+    Click "Update" then "Save and Continue"
+    
+    <Note>
+    These scopes match the `SCOPES` list in settings.py
+    </Note>
+  </Step>
+  
+  <Step title="Add Test Users (External Apps)">
+    If using External user type:
+    
+    1. Click "Add Users"
+    2. Enter email addresses of users who can test the app
+    3. Click "Add"
+    4. Click "Save and Continue"
+    
+    <Warning>
+    External apps in testing mode are limited to 100 users. Submit for verification to remove this limit.
+    </Warning>
+  </Step>
+  
+  <Step title="Review and Finish">
+    Review your configuration and click "Back to Dashboard"
+  </Step>
+</Steps>
+
+### Create OAuth 2.0 Credentials
+
+<Steps>
+  <Step title="Access Credentials Page">
+    Navigate to "APIs & Services" > "Credentials"
+  </Step>
+  
+  <Step title="Create OAuth Client ID">
+    1. Click "Create Credentials" at the top
+    2. Select "OAuth client ID"
+  </Step>
+  
+  <Step title="Configure Application Type">
+    **Application type:** Web application
+    
+    **Name:** `YouTube Manager Web Client`
+  </Step>
+  
+  <Step title="Configure Authorized Redirect URIs">
+    Add your callback URLs:
+    
+    <CodeGroup>
+    ```text Development
+    http://localhost:8000/oauth2callback
+    http://127.0.0.1:8000/oauth2callback
+    ```
+    
+    ```text Production
+    https://yourdomain.com/oauth2callback
+    https://www.yourdomain.com/oauth2callback
+    ```
+    </CodeGroup>
+    
+    <Warning>
+    The redirect URI must **exactly match** your application's callback URL, including protocol (http/https), domain, port, and path.
+    </Warning>
+  </Step>
+  
+  <Step title="Create and Download Credentials">
+    1. Click "Create"
+    2. A modal appears with your Client ID and Client Secret
+    3. Click "Download JSON"
+    4. Save the file as `client_secret.json`
+    
+    <Note>
+    Keep this file secure. It contains sensitive credentials.
+    </Note>
+  </Step>
+</Steps>
+
+## Application Configuration
+
+### Client Secret File
+
+<Steps>
+  <Step title="Place client_secret.json">
+    Move the downloaded `client_secret.json` to your project root directory (same location as `manage.py`):
+    
+    ```bash
+    mv ~/Downloads/client_secret_*.json /path/to/youtube_project/client_secret.json
+    ```
+  </Step>
+  
+  <Step title="Verify File Location">
+    The file path is configured in `settings.py`:
+    ```python
+    GOOGLE_CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, 'client_secret.json')
+    ```
+  </Step>
+  
+  <Step title="Secure the File">
+    Add to `.gitignore` to prevent committing:
+    ```bash
+    echo "client_secret.json" >> .gitignore
+    ```
+    
+    Set file permissions:
+    ```bash
+    chmod 600 client_secret.json
+    ```
+  </Step>
+</Steps>
+
+### File Structure
+
+The `client_secret.json` file should have this structure:
+
+```json
+{
+  "web": {
+    "client_id": "your-client-id.apps.googleusercontent.com",
+    "project_id": "your-project-id",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_secret": "your-client-secret",
+    "redirect_uris": [
+      "http://localhost:8000/oauth2callback"
+    ]
+  }
+}
+```
+
+<Warning>
+Never commit this file to version control or share it publicly.
+</Warning>
+
+### OAuth Configuration in Settings
+
+The application configures OAuth with the following settings in `settings.py`:
+
+```python
+# Allow HTTP in local development
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+# Relax scope matching
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+
+GOOGLE_CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, 'client_secret.json')
+
+SCOPES = [
+    'https://www.googleapis.com/auth/youtube',
+    'https://www.googleapis.com/auth/youtube.upload',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid'
+]
+```
+
+### OAuth Scopes Explained
+
+<ParamField path="youtube" type="string">
+  **URL:** `https://www.googleapis.com/auth/youtube`
+  
+  Full access to manage YouTube account.
+  
+  **Allows:**
+  - View account information
+  - Manage videos and playlists
+  - View analytics
+  - Manage comments and live streams
+</ParamField>
+
+<ParamField path="youtube.upload" type="string">
+  **URL:** `https://www.googleapis.com/auth/youtube.upload`
+  
+  Upload videos to YouTube.
+  
+  **Allows:**
+  - Upload new videos
+  - Set video metadata
+  - Configure privacy settings
+</ParamField>
+
+<ParamField path="userinfo.email" type="string">
+  **URL:** `https://www.googleapis.com/auth/userinfo.email`
+  
+  Access user's email address.
+  
+  **Used for:**
+  - User identification
+  - Account linking
+</ParamField>
+
+<ParamField path="userinfo.profile" type="string">
+  **URL:** `https://www.googleapis.com/auth/userinfo.profile`
+  
+  Access basic profile information.
+  
+  **Includes:**
+  - Name
+  - Profile picture
+  - Profile URL
+</ParamField>
+
+<ParamField path="openid" type="string">
+  **URL:** `openid`
+  
+  OpenID Connect authentication.
+  
+  **Used for:**
+  - Secure authentication
+  - ID token generation
+</ParamField>
+
+### Development vs Production
+
+<CodeGroup>
+```python Development
+# settings.py - Development settings
+
+# Allow HTTP (localhost only)
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+# Relax token scope matching
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+```
+
+```python Production
+# settings.py - Production settings
+
+# Remove or comment out for production
+# os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+# Keep scope relaxation if needed
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+```
+</CodeGroup>
+
+<Warning>
+**Production Security:**
+- Remove `OAUTHLIB_INSECURE_TRANSPORT` setting
+- Use HTTPS for all OAuth callbacks
+- Update redirect URIs in Google Cloud Console to use HTTPS
+</Warning>
+
+## API Quotas and Limits
+
+### YouTube Data API v3 Quotas
+
+**Default Quota:** 10,000 units per day
+
+**Cost per Operation:**
+- Read operations: 1 unit
+- Write operations: 50 units
+- Video upload: 1600 units
+- Delete operations: 50 units
+
+### Common Operation Costs
+
+| Operation | Quota Cost |
+|-----------|------------|
+| List videos | 1 unit |
+| Search videos | 100 units |
+| Upload video | 1600 units |
+| Update video | 50 units |
+| Delete video | 50 units |
+| List channels | 1 unit |
+| List playlists | 1 unit |
+
+<Note>
+Your daily quota resets at midnight Pacific Time (PT).
+</Note>
+
+### Requesting Quota Increase
+
+If you need more quota:
+
+<Steps>
+  <Step title="Access Quota Page">
+    Navigate to "APIs & Services" > "Quotas" in Google Cloud Console
+  </Step>
+  
+  <Step title="Select YouTube Data API v3">
+    Find "YouTube Data API v3" in the list
+  </Step>
+  
+  <Step title="Request Increase">
+    1. Click on the quota you want to increase
+    2. Click "Edit Quotas"
+    3. Fill out the request form with justification
+    4. Submit request
+  </Step>
+  
+  <Step title="Wait for Approval">
+    Google typically responds within 2-3 business days
+  </Step>
+</Steps>
+
+### Monitoring Quota Usage
+
+View your quota usage in Google Cloud Console:
+
+1. Navigate to "APIs & Services" > "Dashboard"
+2. Click on "YouTube Data API v3"
+3. View "Quotas" tab for usage statistics
+
+## Troubleshooting
+
+### OAuth Errors
+
+#### Error: redirect_uri_mismatch
+
+**Problem:** The redirect URI doesn't match configured URIs.
+
+**Solution:**
+1. Check the callback URL in your application
+2. Verify it exactly matches a URI in Google Cloud Console
+3. Include protocol (http/https), domain, port, and path
+4. Update Google Cloud Console credentials if needed
+
+#### Error: invalid_client
+
+**Problem:** Client credentials are invalid or missing.
+
+**Solution:**
+1. Verify `client_secret.json` exists in project root
+2. Check file is properly formatted JSON
+3. Re-download credentials from Google Cloud Console if corrupted
+4. Ensure `GOOGLE_CLIENT_SECRETS_FILE` path is correct
+
+#### Error: access_denied
+
+**Problem:** User denied permission or app not verified.
+
+**Solution:**
+1. Ensure user clicks "Allow" during OAuth flow
+2. If using External app type, add user as test user
+3. Check OAuth consent screen configuration
+4. Verify required scopes are configured
+
+### API Errors
+
+#### Error: quotaExceeded
+
+**Problem:** Daily API quota limit reached.
+
+**Solution:**
+1. Wait until quota resets (midnight PT)
+2. Optimize API calls to use fewer units
+3. Request quota increase from Google
+4. Implement caching to reduce API calls
+
+#### Error: forbidden (403)
+
+**Problem:** API not enabled or insufficient permissions.
+
+**Solution:**
+1. Verify YouTube Data API v3 is enabled
+2. Check OAuth scopes include required permissions
+3. Ensure user granted all requested scopes
+4. Verify API key restrictions (if using API keys)
+
+#### Error: insufficientPermissions
+
+**Problem:** User doesn't have permission for the operation.
+
+**Solution:**
+1. Verify OAuth scopes include necessary permissions
+2. Check user owns the resource being modified
+3. Ensure scopes match those configured in consent screen
+
+### Token Issues
+
+#### Token Expired
+
+**Problem:** OAuth token has expired.
+
+**Solution:**
+Tokens are automatically refreshed by the library. If issues persist:
+1. Clear token cache/session
+2. Re-authenticate the user
+3. Check refresh token is being stored properly
+
+#### Token Not Found
+
+**Problem:** No stored credentials for user.
+
+**Solution:**
+1. User needs to authenticate through OAuth flow
+2. Check session storage is working
+3. Verify token storage implementation
+
+## Security Best Practices
+
+<Warning>
+**Critical Security Guidelines:**
+
+1. **Protect client_secret.json**
+   - Never commit to version control
+   - Set file permissions to 600
+   - Store securely in production
+
+2. **Use HTTPS in production**
+   - Remove `OAUTHLIB_INSECURE_TRANSPORT`
+   - Configure HTTPS redirect URIs
+   - Use SSL certificates
+
+3. **Limit OAuth scopes**
+   - Request only necessary scopes
+   - Review scope permissions regularly
+   - Remove unused scopes
+
+4. **Monitor API usage**
+   - Track quota consumption
+   - Set up usage alerts
+   - Implement rate limiting
+
+5. **Secure token storage**
+   - Encrypt stored tokens
+   - Use secure session management
+   - Implement token rotation
+</Warning>
+
+## Testing OAuth Flow
+
+<Steps>
+  <Step title="Start Development Server">
+    ```bash
+    python manage.py runserver
+    ```
+  </Step>
+  
+  <Step title="Access Login Page">
+    Navigate to: `http://localhost:8000/login/`
+  </Step>
+  
+  <Step title="Initiate OAuth Flow">
+    Click "Sign in with Google" or equivalent button
+  </Step>
+  
+  <Step title="Authorize Application">
+    1. Select your Google account
+    2. Review requested permissions
+    3. Click "Allow"
+  </Step>
+  
+  <Step title="Verify Callback">
+    Should redirect to: `http://localhost:8000/oauth2callback?code=...`
+    
+    Then redirect to your application homepage
+  </Step>
+</Steps>
+
+<Note>
+If using External app type, ensure your Google account is added as a test user.
+</Note>

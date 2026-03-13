@@ -1,0 +1,403 @@
+---
+title: 'Forms'
+description: 'Complete reference for YouTube Manager form classes'
+icon: 'square-check'
+---
+
+## Overview
+
+YouTube Manager uses Django ModelForm to handle video upload data. The `VideoUploadForm` provides validation and widget configuration for uploading videos to YouTube.
+
+## VideoUploadForm
+
+A ModelForm based on the `VideoSubido` model with an additional file upload field.
+
+### Class Definition
+
+```python
+from django import forms
+from .models import VideoSubido
+
+class VideoUploadForm(forms.ModelForm):
+    archivo_video = forms.FileField(
+        label="Selecciona tu video", 
+        widget=forms.FileInput(attrs={'class': 'form-control', 'accept': 'video/*'})
+    )
+
+    class Meta:
+        model = VideoSubido
+        fields = ['titulo', 'descripcion', 'estado']
+        widgets = {
+            'titulo': forms.TextInput(attrs={'class': 'form-control'}),
+            'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'estado': forms.Select(attrs={'class': 'form-select'}),
+        }
+```
+
+---
+
+## Form Fields
+
+### archivo_video
+
+<ParamField path="archivo_video" type="FileField">
+  Video file upload field. Not part of the model - used only for handling the upload.
+</ParamField>
+
+**Field Configuration:**
+- **Type:** `forms.FileField`
+- **Label:** `"Selecciona tu video"`
+- **Widget:** `forms.FileInput`
+- **HTML Attributes:**
+  - `class`: `'form-control'` (Bootstrap styling)
+  - `accept`: `'video/*'` (Browser file picker shows only video files)
+- **Required:** Yes (default)
+
+**Notes:**
+- This field is not part of the `VideoSubido` model
+- Used to receive the video file before uploading to YouTube
+- The file is saved temporarily via `FileSystemStorage` during upload
+- Accepts any video format that the browser recognizes as `video/*`
+
+---
+
+### titulo
+
+<ParamField path="titulo" type="CharField">
+  Video title field. Corresponds to `VideoSubido.titulo`.
+</ParamField>
+
+**Field Configuration:**
+- **Type:** `forms.CharField` (from model)
+- **Widget:** `forms.TextInput`
+- **HTML Attributes:**
+  - `class`: `'form-control'` (Bootstrap styling)
+- **Max Length:** 255 characters (from model)
+- **Required:** Yes (from model)
+
+---
+
+### descripcion
+
+<ParamField path="descripcion" type="TextField">
+  Video description field. Corresponds to `VideoSubido.descripcion`.
+</ParamField>
+
+**Field Configuration:**
+- **Type:** `forms.CharField` (from model TextField)
+- **Widget:** `forms.Textarea`
+- **HTML Attributes:**
+  - `class`: `'form-control'` (Bootstrap styling)
+  - `rows`: `3` (Initial textarea height)
+- **Max Length:** Unlimited (TextField)
+- **Required:** Yes (from model)
+
+---
+
+### estado
+
+<ParamField path="estado" type="ChoiceField">
+  Privacy status field. Corresponds to `VideoSubido.estado`.
+</ParamField>
+
+**Field Configuration:**
+- **Type:** `forms.ChoiceField` (from model)
+- **Widget:** `forms.Select` (dropdown)
+- **HTML Attributes:**
+  - `class`: `'form-select'` (Bootstrap 5 select styling)
+- **Choices:** Inherited from `VideoSubido.ESTADOS`:
+  - `('private', 'Privado')`
+  - `('public', 'Público')`
+  - `('unlisted', 'No listado')`
+- **Default:** `'private'` (from model)
+- **Required:** Yes (from model)
+
+---
+
+## Meta Configuration
+
+### model
+
+<ParamField path="Meta.model" type="Model">
+  `VideoSubido` - The model this form is based on.
+</ParamField>
+
+### fields
+
+<ParamField path="Meta.fields" type="list">
+  `['titulo', 'descripcion', 'estado']` - Model fields included in the form.
+</ParamField>
+
+<Note>
+  The `user`, `video_id`, and `fecha_subida` fields from `VideoSubido` are **not** in the form. They are set programmatically in the view after successful upload.
+</Note>
+
+### widgets
+
+<ParamField path="Meta.widgets" type="dict">
+  Custom widget configurations for model fields with Bootstrap 5 classes.
+</ParamField>
+
+---
+
+## Validation
+
+### Built-in Validation
+
+The form inherits validation from both Django and the model:
+
+1. **titulo**
+   - Required (cannot be blank)
+   - Max length: 255 characters
+
+2. **descripcion**
+   - Required (cannot be blank)
+   - No max length
+
+3. **estado**
+   - Required
+   - Must be one of: `'private'`, `'public'`, `'unlisted'`
+
+4. **archivo_video**
+   - Required
+   - Must be a valid file upload
+
+### Custom Validation
+
+No custom validation methods are defined. All validation uses Django's default form validation.
+
+---
+
+## Usage Examples
+
+### Basic Form Rendering in Template
+
+```html
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Subir Video</button>
+</form>
+```
+
+### Manual Field Rendering
+
+```html
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    
+    <div class="mb-3">
+        <label for="{{ form.archivo_video.id_for_label }}">Video</label>
+        {{ form.archivo_video }}
+        {% if form.archivo_video.errors %}
+            <div class="text-danger">{{ form.archivo_video.errors }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="mb-3">
+        <label for="{{ form.titulo.id_for_label }}">Título</label>
+        {{ form.titulo }}
+        {% if form.titulo.errors %}
+            <div class="text-danger">{{ form.titulo.errors }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="mb-3">
+        <label for="{{ form.descripcion.id_for_label }}">Descripción</label>
+        {{ form.descripcion }}
+    </div>
+    
+    <div class="mb-3">
+        <label for="{{ form.estado.id_for_label }}">Privacidad</label>
+        {{ form.estado }}
+    </div>
+    
+    <button type="submit" class="btn btn-primary">Subir</button>
+</form>
+```
+
+### View Usage
+
+```python
+from .forms import VideoUploadForm
+
+@login_required
+def subir_video_youtube(request):
+    if request.method == 'POST':
+        form = VideoUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            # Access uploaded file
+            video_file = request.FILES['archivo_video']
+            
+            # Access cleaned data
+            titulo = form.cleaned_data['titulo']
+            descripcion = form.cleaned_data['descripcion']
+            estado = form.cleaned_data['estado']
+            
+            # Process upload...
+            
+    else:
+        form = VideoUploadForm()
+    
+    return render(request, 'subir_video.html', {'form': form})
+```
+
+### Accessing Form Data After Validation
+
+```python
+if form.is_valid():
+    # Cleaned and validated data
+    titulo = form.cleaned_data['titulo']  # String, max 255 chars
+    descripcion = form.cleaned_data['descripcion']  # String, unlimited
+    estado = form.cleaned_data['estado']  # One of: 'private', 'public', 'unlisted'
+    
+    # File upload (from request.FILES, not cleaned_data)
+    video_file = request.FILES['archivo_video']  # UploadedFile object
+```
+
+---
+
+## Form HTML Output
+
+When rendered, the form generates HTML similar to:
+
+```html
+<!-- archivo_video field -->
+<input type="file" name="archivo_video" class="form-control" 
+       accept="video/*" required id="id_archivo_video">
+
+<!-- titulo field -->
+<input type="text" name="titulo" class="form-control" 
+       maxlength="255" required id="id_titulo">
+
+<!-- descripcion field -->
+<textarea name="descripcion" class="form-control" rows="3" 
+          required id="id_descripcion"></textarea>
+
+<!-- estado field -->
+<select name="estado" class="form-select" required id="id_estado">
+    <option value="private" selected>Privado</option>
+    <option value="public">Público</option>
+    <option value="unlisted">No listado</option>
+</select>
+```
+
+---
+
+## Integration with Views
+
+The form is used in the `subir_video_youtube` view (views.py:182):
+
+1. **GET Request:** Empty form is displayed
+   ```python
+   form = VideoUploadForm()
+   return render(request, 'subir_video.html', {'form': form})
+   ```
+
+2. **POST Request:** Form processes uploaded data
+   ```python
+   form = VideoUploadForm(request.POST, request.FILES)
+   if form.is_valid():
+       video_file = request.FILES['archivo_video']
+       # Save temporarily and upload to YouTube
+   ```
+
+3. **After Upload:** Create `VideoSubido` record
+   ```python
+   VideoSubido.objects.create(
+       user=request.user,
+       video_id=response['id'],  # From YouTube API
+       titulo=form.cleaned_data['titulo'],
+       descripcion=form.cleaned_data['descripcion'],
+       estado=form.cleaned_data['estado']
+   )
+   ```
+
+---
+
+## File Handling Flow
+
+1. User selects video file via `archivo_video` field
+2. Form validates file upload on POST
+3. View accesses file via `request.FILES['archivo_video']`
+4. File saved temporarily using `FileSystemStorage`:
+   ```python
+   fs = FileSystemStorage()
+   filename = fs.save(video_file.name, video_file)
+   filepath = fs.path(filename)
+   ```
+5. File uploaded to YouTube using `MediaFileUpload`
+6. Temporary file deleted after upload
+
+<Note>
+  The `enctype="multipart/form-data"` attribute is **required** on the `<form>` tag for file uploads to work properly.
+</Note>
+
+---
+
+## Error Handling
+
+### Validation Errors
+
+Common validation errors:
+
+```python
+# Empty required field
+{'titulo': ['This field is required.']}
+
+# Title too long
+{'titulo': ['Ensure this value has at most 255 characters.']}
+
+# Invalid estado choice
+{'estado': ['Select a valid choice. invalid is not one of the available choices.']}
+
+# No file uploaded
+{'archivo_video': ['This field is required.']}
+```
+
+### Displaying Errors in Template
+
+```html
+{% if form.errors %}
+    <div class="alert alert-danger">
+        <strong>Errores de validación:</strong>
+        {{ form.errors }}
+    </div>
+{% endif %}
+
+<!-- Or per-field -->
+{% if form.titulo.errors %}
+    <div class="text-danger">
+        {{ form.titulo.errors }}
+    </div>
+{% endif %}
+```
+
+---
+
+## Bootstrap Styling
+
+All fields use Bootstrap 5 CSS classes:
+
+- `form-control`: Standard input/textarea styling
+- `form-select`: Dropdown select styling
+
+These classes provide consistent, responsive styling across the application.
+
+### Example CSS
+
+```css
+.form-control {
+    display: block;
+    width: 100%;
+    padding: 0.375rem 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+}
+
+.form-select {
+    /* Similar to form-control but for <select> elements */
+}
+```

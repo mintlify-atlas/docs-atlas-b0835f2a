@@ -1,0 +1,303 @@
+---
+title: 'Authentication'
+description: 'Google OAuth 2.0 authentication system for YouTube API access'
+icon: 'key'
+---
+
+## Overview
+
+YouTube Manager uses Google OAuth 2.0 to authenticate users and obtain authorization to access the YouTube Data API on their behalf. This provides secure, token-based access without storing user passwords.
+
+## OAuth Flow
+
+<Steps>
+  <Step title="User Initiates Login">
+    The user clicks the login button, triggering the `google_login` view at `/oauth/login/`.
+  </Step>
+  
+  <Step title="Authorization Request">
+    The application redirects to Google's authorization server with the requested scopes and a state parameter for CSRF protection.
+  </Step>
+  
+  <Step title="User Grants Permission">
+    Google presents a consent screen where the user authorizes the application to access their YouTube account.
+  </Step>
+  
+  <Step title="Authorization Code Exchange">
+    Google redirects back to `/oauth/callback/` with an authorization code, which is exchanged for access and refresh tokens.
+  </Step>
+  
+  <Step title="User Information Retrieval">
+    The application uses the OAuth2 API to fetch the user's email and name for account creation/login.
+  </Step>
+  
+  <Step title="Session Storage">
+    Credentials are stored in the Django session for subsequent API calls.
+  </Step>
+</Steps>
+
+## Required Scopes
+
+The application requests the following OAuth scopes defined in `settings.py:129-135`:
+
+```python
+SCOPES = [
+    'https://www.googleapis.com/auth/youtube',
+    'https://www.googleapis.com/auth/youtube.upload',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'openid'
+]
+```
+
+<CardGroup cols={2}>
+  <Card title="YouTube API Access" icon="youtube">
+    Full access to YouTube account data, including videos, playlists, and channel information.
+  </Card>
+  
+  <Card title="Video Upload" icon="cloud-arrow-up">
+    Permission to upload videos to the user's YouTube channel.
+  </Card>
+  
+  <Card title="User Profile" icon="user">
+    Access to email and profile information for account identification.
+  </Card>
+  
+  <Card title="OpenID Connect" icon="id-badge">
+    Standard authentication protocol for identity verification.
+  </Card>
+</CardGroup>
+
+## Implementation Details
+
+### Login View
+
+The `login_view` function (`views.py:24-27`) serves the login page:
+
+```python
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect('inicio')
+    return render(request, 'login.html')
+```
+
+<Info>If the user is already authenticated, they are redirected directly to the home page.</Info>
+
+### Google Login Initiation
+
+The `google_login` function (`views.py:29-44`) starts the OAuth flow:
+
+```python
+def google_login(request):
+    # Inicia el flujo OAuth
+    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+        settings.GOOGLE_CLIENT_SECRETS_FILE,
+        scopes=settings.SCOPES
+    )
+    flow.redirect_uri = config('GOOGLE_CALLBACK_URL')
+    
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+    
+    # Guardamos el estado para verificarlo después
+    request.session['state'] = state
+    return redirect(authorization_url)
+```
+
+**Key parameters:**
+- `access_type='offline'`: Requests a refresh token for long-term access
+- `include_granted_scopes='true'`: Preserves previously granted scopes
+- State parameter stored in session for CSRF protection
+
+### OAuth Callback Handler
+
+The `google_callback` function (`views.py:46-86`) processes the authorization response:
+
+```python
+def google_callback(request):
+    state = request.session.get('state')
+    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+        settings.GOOGLE_CLIENT_SECRETS_FILE,
+        scopes=settings.SCOPES,
+        state=state
+    )
+    flow.redirect_uri = config('GOOGLE_CALLBACK_URL')
+
+    # Intercambia el código por tokens
+    flow.fetch_token(authorization_response=request.build_absolute_uri())
+    credentials = flow.credentials
+
+    # Obtenemos info del usuario para el Login de Django
+    session = requests.session()
+    cached_session = requests.adapters.HTTPAdapter(max_retries=3)
+    session.mount('https://', cached_session)
+    
+    user_info_service = build('oauth2', 'v2', credentials=credentials)
+    user_info = user_info_service.userinfo().get().execute()
+    
+    email = user_info.get('email')
+    first_name = user_info.get('given_name', '')
+    
+    # Lógica de Login/Registro automático
+    if email:
+        user, created = User.objects.get_or_create(
+            username=email, 
+            defaults={'email': email, 'first_name': first_name}
+        )
+        login(request, user)
+        
+        # Guardamos las credenciales en sesión para usarlas en la API de YouTube
+        request.session['credentials'] = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+        return redirect('inicio')
+    
+    return redirect('login')
+```
+
+<Note>
+The application uses `get_or_create()` to automatically register new users or log in existing ones based on their Google email address.
+</Note>
+
+## Session Management
+
+### Credential Storage
+
+Credentials are stored in Django's session system (`views.py:76-83`) with the following structure:
+
+```python
+request.session['credentials'] = {
+    'token': credentials.token,
+    'refresh_token': credentials.refresh_token,
+    'token_uri': credentials.token_uri,
+    'client_id': credentials.client_id,
+    'client_secret': credentials.client_secret,
+    'scopes': credentials.scopes
+}
+```
+
+### YouTube Service Helper
+
+The `get_youtube_service` function (`views.py:94-102`) reconstructs credentials from the session:
+
+```python
+def get_youtube_service(request):
+    # Reconstruye las credenciales desde la sesión
+    creds_data = request.session.get('credentials')
+    if not creds_data:
+        return None
+    
+    from google.oauth2.credentials import Credentials
+    creds = Credentials(**creds_data)
+    return build('youtube', 'v3', credentials=creds)
+```
+
+This function is called by all views that need to interact with the YouTube API.
+
+<Warning>
+If credentials are not found in the session, the function returns `None`, and views should redirect the user to re-authenticate.
+</Warning>
+
+### Logout
+
+The `logout_view` function (`views.py:88-90`) clears the Django session:
+
+```python
+def logout_view(request):
+    logout(request)
+    return redirect('login')
+```
+
+## Configuration
+
+### Client Secrets File
+
+The application requires a `client_secret.json` file in the project root (`settings.py:127`):
+
+```python
+GOOGLE_CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, 'client_secret.json')
+```
+
+This file contains your Google OAuth 2.0 client ID and secret obtained from the Google Cloud Console.
+
+### Environment Variables
+
+The following environment variables must be configured:
+
+- `GOOGLE_CALLBACK_URL`: The OAuth callback URL (e.g., `http://localhost:8000/oauth/callback/`)
+
+### Development Settings
+
+For local development, the application relaxes OAuth security requirements (`settings.py:123-125`):
+
+```python
+# Permitir HTTP en desarrollo local
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+# CORRECCIÓN: Relajar coincidencia de scopes
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+```
+
+<Warning>
+**Production Warning:** Remove or set `OAUTHLIB_INSECURE_TRANSPORT` to `0` in production to enforce HTTPS.
+</Warning>
+
+## URL Configuration
+
+Authentication routes are defined in `urls.py:8-12`:
+
+```python
+# Auth
+path('login/', views.login_view, name='login'),
+path('logout/', views.logout_view, name='logout'),
+path('oauth/login/', views.google_login, name='google_login'),
+path('oauth/callback/', views.google_callback, name='google_callback'),
+```
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="State Parameter" icon="shield-check">
+    A unique state token is generated and validated to prevent CSRF attacks during the OAuth flow.
+  </Card>
+  
+  <Card title="Session Storage" icon="lock">
+    Credentials are stored in server-side sessions, not exposed to the client.
+  </Card>
+  
+  <Card title="Refresh Tokens" icon="arrows-rotate">
+    Offline access enables automatic token refresh without re-authentication.
+  </Card>
+  
+  <Card title="Scope Limitation" icon="shield-halved">
+    Only necessary scopes are requested to minimize security exposure.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Missing Credentials
+
+If a view detects missing credentials:
+
+```python
+youtube = get_youtube_service(request)
+if not youtube:
+    return redirect('google_login')
+```
+
+The user is automatically redirected to re-authenticate.
+
+### Token Expiration
+
+The Google API client library automatically handles token refresh using the stored `refresh_token`.
+
+<Tip>
+Ensure `access_type='offline'` is set in the authorization URL to receive a refresh token.
+</Tip>

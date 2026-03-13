@@ -1,80 +1,196 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get your YouTube Manager app up and running in 5 minutes'
 ---
 
-## Get started in three steps
+This guide will walk you through setting up YouTube Manager from installation to uploading your first video.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Install Dependencies">
+    Create a virtual environment and install the required packages:
 
-### Step 1: Set up your local environment
+    ```bash
+    # Create and activate virtual environment
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    # Install dependencies
+    pip install -r requirements.txt
+    ```
 
-### Step 2: Deploy your changes
+    <Note>
+      This project requires Python 3.8+ and MySQL 5.7+ or 8.0+
+    </Note>
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Configure Google Cloud Project">
+    You need OAuth 2.0 credentials from Google Cloud Console:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+    2. Create a new project or select an existing one
+    3. Enable the **YouTube Data API v3**
+    4. Create OAuth 2.0 credentials (Web application type)
+    5. Add authorized redirect URI: `http://localhost:8000/oauth/callback/`
+    6. Download the credentials as `client_secret.json`
+    7. Place `client_secret.json` in your project root directory
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    <Warning>
+      Keep your `client_secret.json` file secure and never commit it to version control
+    </Warning>
+  </Step>
 
-### Step 3: Go live
+  <Step title="Set Up Environment Variables">
+    Create a `.env` file in your project root with the following configuration:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    # Django Settings
+    SECRET_KEY=your-django-secret-key-here
+    DEBUG=True
+    ALLOWED_HOSTS=localhost,127.0.0.1
 
-## Next steps
+    # Database Configuration
+    DB_NAME=youtube_manager
+    DB_USER=root
+    DB_PASS=your_mysql_password
+    DB_HOST=localhost
+    DB_PORT=3306
 
-Now that you have your docs running, explore these key features:
+    # Google OAuth
+    GOOGLE_CALLBACK_URL=http://localhost:8000/oauth/callback/
+    ```
+
+    <Tip>
+      Generate a secure SECRET_KEY using: `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`
+    </Tip>
+  </Step>
+
+  <Step title="Create MySQL Database">
+    Create the database for your application:
+
+    ```bash
+    # Log into MySQL
+    mysql -u root -p
+    ```
+
+    ```sql
+    CREATE DATABASE youtube_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    ```
+
+    ```sql
+    exit;
+    ```
+  </Step>
+
+  <Step title="Run Migrations">
+    Apply database migrations to set up your schema:
+
+    ```bash
+    python manage.py migrate
+    ```
+
+    This creates the necessary tables including:
+    - `VideoGuardado` - For saved/favorite videos
+    - `VideoSubido` - For uploaded videos tracking
+  </Step>
+
+  <Step title="Create Superuser (Optional)">
+    Create an admin user to access the Django admin panel:
+
+    ```bash
+    python manage.py createsuperuser
+    ```
+
+    <Info>
+      This is optional - users can also authenticate directly via Google OAuth
+    </Info>
+  </Step>
+
+  <Step title="Start the Development Server">
+    Launch your YouTube Manager application:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    Your app will be available at `http://localhost:8000`
+  </Step>
+
+  <Step title="Authenticate with Google">
+    1. Navigate to `http://localhost:8000`
+    2. Click the login button
+    3. Authenticate with your Google account
+    4. Grant the requested YouTube API permissions:
+       - `youtube` - Read and manage YouTube account
+       - `youtube.upload` - Upload videos
+       - `userinfo.email` and `userinfo.profile` - Basic profile info
+
+    <Note>
+      The app uses OAuth 2.0 with offline access to maintain your session
+    </Note>
+  </Step>
+
+  <Step title="Try Your First Action">
+    Now you're ready to use YouTube Manager! Try one of these actions:
+
+    **Search for a video:**
+    ```python
+    # Navigate to /buscar/ and enter a search query
+    # The app uses the YouTube Data API v3 search endpoint
+    # See core/views.py:109-141
+    ```
+
+    **Upload a video:**
+    1. Go to `/subir/` (Upload page)
+    2. Fill in the video details:
+       - Title
+       - Description
+       - Privacy status (private, public, unlisted)
+    3. Select your video file
+    4. Click upload
+
+    The video will be uploaded to your YouTube channel and tracked in your database.
+
+    <Tip>
+      Videos are stored temporarily during upload and automatically cleaned up afterwards (see `core/views.py:240-254`)
+    </Tip>
+  </Step>
+</Steps>
+
+## What's Next?
+
+Now that your YouTube Manager is running, explore these features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Search & Save Videos" icon="magnifying-glass" href="/features/video-search">
+    Search YouTube and save videos to your personal library
+  </Card>
+  <Card title="Upload Videos" icon="upload" href="/features/video-upload">
+    Upload videos directly to your YouTube channel
+  </Card>
+  <Card title="Manage Privacy" icon="shield" href="/features/privacy-management">
+    Change video privacy settings (public, private, unlisted)
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/models">
+    Explore the available views and models
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="OAuth error: redirect_uri_mismatch">
+    Ensure your Google Cloud Console OAuth 2.0 credentials include `http://localhost:8000/oauth/callback/` as an authorized redirect URI.
+  </Accordion>
+
+  <Accordion title="Database connection error">
+    Verify your MySQL server is running and your `.env` file has the correct database credentials.
+  </Accordion>
+
+  <Accordion title="ImportError: No module named 'decouple'">
+    Make sure you've installed all requirements: `pip install -r requirements.txt`
+  </Accordion>
+
+  <Accordion title="API quota exceeded">
+    YouTube Data API has daily quota limits. Check your quota usage in Google Cloud Console.
+  </Accordion>
+</AccordionGroup>

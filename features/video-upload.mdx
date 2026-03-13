@@ -1,0 +1,478 @@
+---
+title: 'Video Upload'
+description: 'Upload videos directly to YouTube with metadata and privacy controls'
+icon: 'cloud-arrow-up'
+---
+
+## Overview
+
+The video upload feature enables users to upload video files directly to their YouTube channel through the application. The system handles file storage, metadata configuration, YouTube API upload, and database tracking.
+
+## Database Model
+
+The `VideoSubido` model (`models.py:20-36`) tracks uploaded videos:
+
+```python
+class VideoSubido(models.Model):
+    ESTADOS = [
+        ('private', 'Privado'),
+        ('public', 'Público'),
+        ('unlisted', 'No listado'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    video_id = models.CharField(max_length=50, unique=True)
+    titulo = models.CharField(max_length=255)
+    descripcion = models.TextField()
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='private')
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.titulo} ({self.estado})"
+```
+
+### Model Fields
+
+<ResponseField name="user" type="ForeignKey" required>
+  Links the uploaded video to the Django user who uploaded it.
+</ResponseField>
+
+<ResponseField name="video_id" type="CharField(50)" required>
+  YouTube's unique video ID returned after successful upload. Must be globally unique.
+</ResponseField>
+
+<ResponseField name="titulo" type="CharField(255)" required>
+  Video title displayed on YouTube.
+</ResponseField>
+
+<ResponseField name="descripcion" type="TextField" required>
+  Video description text.
+</ResponseField>
+
+<ResponseField name="estado" type="CharField(20)" default="private">
+  Privacy status: `private`, `public`, or `unlisted`.
+</ResponseField>
+
+<ResponseField name="fecha_subida" type="DateTimeField">
+  Automatically set timestamp when the video record is created.
+</ResponseField>
+
+### Privacy States
+
+The model defines three privacy options:
+
+<CardGroup cols={3}>
+  <Card title="Private" icon="lock">
+    Only you and selected users can view the video.
+  </Card>
+  
+  <Card title="Public" icon="globe">
+    Anyone can search for and view the video.
+  </Card>
+  
+  <Card title="Unlisted" icon="link">
+    Anyone with the link can view, but won't appear in search results.
+  </Card>
+</CardGroup>
+
+## Upload Form
+
+The `VideoUploadForm` (`forms.py:4-17`) handles user input:
+
+```python
+class VideoUploadForm(forms.ModelForm):
+    archivo_video = forms.FileField(
+        label="Selecciona tu video", 
+        widget=forms.FileInput(attrs={'class': 'form-control', 'accept': 'video/*'})
+    )
+
+    class Meta:
+        model = VideoSubido
+        fields = ['titulo', 'descripcion', 'estado']
+        widgets = {
+            'titulo': forms.TextInput(attrs={'class': 'form-control'}),
+            'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'estado': forms.Select(attrs={'class': 'form-select'}),
+        }
+```
+
+### Form Fields
+
+<ParamField path="archivo_video" type="FileField" required>
+  Video file upload field. Accepts all video formats (`video/*`).
+</ParamField>
+
+<ParamField path="titulo" type="CharField" required>
+  Video title (max 255 characters).
+</ParamField>
+
+<ParamField path="descripcion" type="TextField" required>
+  Detailed video description.
+</ParamField>
+
+<ParamField path="estado" type="ChoiceField" default="private">
+  Privacy status dropdown (private, public, unlisted).
+</ParamField>
+
+## Upload Process
+
+The `subir_video_youtube` view (`views.py:181-259`) implements the complete upload workflow:
+
+```python
+@login_required
+def subir_video_youtube(request):
+    if request.method == 'POST':
+        form = VideoUploadForm(request.POST, request.FILES)
+        if form.is_valid():
+            video_file = request.FILES['archivo_video']
+            
+            # 1. Guardar archivo temporalmente
+            fs = FileSystemStorage()
+            filename = fs.save(video_file.name, video_file)
+            filepath = fs.path(filename)
+            
+            # Inicializamos 'media' como None para evitar errores en el finally
+            media = None
+
+            try:
+                youtube = get_youtube_service(request)
+                if not youtube:
+                    return redirect('google_login')
+
+                # 2. Configurar metadatos
+                body = {
+                    'snippet': {
+                        'title': form.cleaned_data['titulo'],
+                        'description': form.cleaned_data['descripcion'],
+                        'tags': ['TubeManager', 'Django'],
+                        'categoryId': '22'
+                    },
+                    'status': {
+                        'privacyStatus': form.cleaned_data['estado']
+                    }
+                }
+
+                # 3. Preparar la subida
+                media = MediaFileUpload(filepath, chunksize=-1, resumable=True)
+                
+                request_upload = youtube.videos().insert(
+                    part=','.join(body.keys()),
+                    body=body,
+                    media_body=media
+                )
+                
+                response = request_upload.execute()
+                
+                # 4. Guardar referencia en DB
+                VideoSubido.objects.create(
+                    user=request.user,
+                    video_id=response['id'],
+                    titulo=form.cleaned_data['titulo'],
+                    descripcion=form.cleaned_data['descripcion'],
+                    estado=form.cleaned_data['estado']
+                )
+                
+                messages.success(request, f"Video subido con éxito! ID: {response['id']}")
+                return redirect('mis_subidos')
+
+            except Exception as e:
+                messages.error(request, f"Error al subir: {e}")
+            
+            finally:
+                # --- CORRECCIÓN PARA WINDOWS (WinError 32) ---
+                # Cerramos explícitamente el flujo del archivo de la librería de Google
+                if media and hasattr(media, 'stream'):
+                    try:
+                        media.stream().close()
+                    except Exception:
+                        pass
+                
+                # Intentamos borrar el archivo. Si falla, lo ignoramos para no romper la app.
+                if os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except PermissionError:
+                        print(f"Advertencia: No se pudo borrar el archivo temporal {filepath} (bloqueado por Windows).")
+
+    else:
+        form = VideoUploadForm()
+
+    return render(request, 'subir_video.html', {'form': form})
+```
+
+## Upload Workflow
+
+<Steps>
+  <Step title="Form Validation">
+    Validate form data and extract the uploaded video file from `request.FILES`.
+  </Step>
+  
+  <Step title="Temporary Storage">
+    Save the video file temporarily using Django's `FileSystemStorage`.
+  </Step>
+  
+  <Step title="Authenticate">
+    Retrieve authenticated YouTube API service from session credentials.
+  </Step>
+  
+  <Step title="Configure Metadata">
+    Build the metadata object with title, description, tags, category, and privacy status.
+  </Step>
+  
+  <Step title="Upload to YouTube">
+    Use `MediaFileUpload` to upload the video file with resumable upload support.
+  </Step>
+  
+  <Step title="Store Reference">
+    Save the YouTube video ID and metadata to the local database.
+  </Step>
+  
+  <Step title="Cleanup">
+    Delete the temporary file and close file handles (with Windows-specific error handling).
+  </Step>
+  
+  <Step title="Redirect">
+    Show success message and redirect to uploaded videos list.
+  </Step>
+</Steps>
+
+## Metadata Configuration
+
+The metadata body structure (`views.py:202-212`) follows YouTube's API schema:
+
+```python
+body = {
+    'snippet': {
+        'title': form.cleaned_data['titulo'],
+        'description': form.cleaned_data['descripcion'],
+        'tags': ['TubeManager', 'Django'],
+        'categoryId': '22'
+    },
+    'status': {
+        'privacyStatus': form.cleaned_data['estado']
+    }
+}
+```
+
+### Snippet Parameters
+
+<ResponseField name="title" type="string" required>
+  Video title displayed on YouTube.
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  Video description shown below the video.
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  List of tags for categorization. Default: `['TubeManager', 'Django']`.
+</ResponseField>
+
+<ResponseField name="categoryId" type="string" default="22">
+  YouTube category ID. `22` represents "People & Blogs".
+</ResponseField>
+
+### Status Parameters
+
+<ResponseField name="privacyStatus" type="string" required>
+  Privacy setting: `private`, `public`, or `unlisted`.
+</ResponseField>
+
+<Info>
+**YouTube Category IDs:**
+- 10: Music
+- 20: Gaming
+- 22: People & Blogs
+- 23: Comedy
+- 24: Entertainment
+- 25: News & Politics
+- 26: Howto & Style
+- [See full list](https://developers.google.com/youtube/v3/docs/videoCategories/list)
+</Info>
+
+## File Upload Mechanism
+
+### Temporary Storage
+
+Videos are temporarily stored using Django's FileSystemStorage (`views.py:189-191`):
+
+```python
+fs = FileSystemStorage()
+filename = fs.save(video_file.name, video_file)
+filepath = fs.path(filename)
+```
+
+Files are saved to `MEDIA_ROOT` defined in `settings.py:138-139`:
+
+```python
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+```
+
+### Resumable Upload
+
+The upload uses `MediaFileUpload` with resumable transfer (`views.py:215-221`):
+
+```python
+media = MediaFileUpload(filepath, chunksize=-1, resumable=True)
+
+request_upload = youtube.videos().insert(
+    part=','.join(body.keys()),
+    body=body,
+    media_body=media
+)
+
+response = request_upload.execute()
+```
+
+<Note>
+**`chunksize=-1`** uploads the entire file in a single request. For large files, use a specific chunk size (e.g., 1MB = 1024*1024) to enable progress tracking.
+</Note>
+
+## File Cleanup
+
+The cleanup logic handles Windows-specific file locking issues (`views.py:240-254`):
+
+```python
+finally:
+    # --- CORRECCIÓN PARA WINDOWS (WinError 32) ---
+    # Cerramos explícitamente el flujo del archivo de la librería de Google
+    if media and hasattr(media, 'stream'):
+        try:
+            media.stream().close()
+        except Exception:
+            pass
+    
+    # Intentamos borrar el archivo. Si falla, lo ignoramos para no romper la app.
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+        except PermissionError:
+            print(f"Advertencia: No se pudo borrar el archivo temporal {filepath} (bloqueado por Windows).")
+```
+
+<Warning>
+**Windows WinError 32:** On Windows, file handles may remain open after upload, preventing deletion. The code explicitly closes the media stream before attempting removal.
+</Warning>
+
+### Cleanup Steps
+
+1. Close the `MediaFileUpload` stream explicitly
+2. Check if the file exists
+3. Attempt to delete with `os.remove()`
+4. Catch and log `PermissionError` without breaking the application
+
+## Viewing Uploaded Videos
+
+The `mis_subidos` view (`views.py:261-263`) displays user's uploaded videos:
+
+```python
+@login_required
+def mis_subidos(request):
+    videos = VideoSubido.objects.filter(user=request.user).order_by('-fecha_subida')
+    return render(request, 'mis_subidos.html', {'videos': videos})
+```
+
+Videos are filtered by user and sorted by upload date (newest first).
+
+## URL Configuration
+
+Upload routes are defined in `urls.py:21-22`:
+
+```python
+path('subir/', views.subir_video_youtube, name='subir_video'),
+path('mis-videos/', views.mis_subidos, name='mis_subidos'),
+```
+
+## API Response
+
+On successful upload, YouTube returns a response object (`views.py:223`):
+
+```python
+response = request_upload.execute()
+# response['id'] contains the new video ID
+```
+
+The video ID is stored in the database and displayed in the success message:
+
+```python
+messages.success(request, f"Video subido con éxito! ID: {response['id']}")
+```
+
+## Error Handling
+
+Upload errors are caught and displayed to the user:
+
+```python
+try:
+    # ... upload logic
+except Exception as e:
+    messages.error(request, f"Error al subir: {e}")
+```
+
+Common errors include:
+- Quota exceeded
+- Invalid file format
+- Network timeout
+- Authentication failure
+- File size limit exceeded
+
+<Tip>
+YouTube's default upload limit is 256 GB or 12 hours, whichever is less.
+</Tip>
+
+## Database Tracking
+
+After successful upload, a database record is created (`views.py:226-232`):
+
+```python
+VideoSubido.objects.create(
+    user=request.user,
+    video_id=response['id'],
+    titulo=form.cleaned_data['titulo'],
+    descripcion=form.cleaned_data['descripcion'],
+    estado=form.cleaned_data['estado']
+)
+```
+
+This allows the application to:
+- Track which videos were uploaded through the app
+- Display upload history
+- Enable privacy management
+- Facilitate video deletion
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Authentication Required" icon="user-shield">
+    The `@login_required` decorator ensures only authenticated users can upload.
+  </Card>
+  
+  <Card title="OAuth Scopes" icon="key">
+    Requires `youtube.upload` scope granted during OAuth flow.
+  </Card>
+  
+  <Card title="File Validation" icon="file-check">
+    Form accepts only video MIME types with `accept='video/*'`.
+  </Card>
+  
+  <Card title="Temporary Storage" icon="clock">
+    Files are deleted immediately after upload to prevent storage bloat.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+- **Default to Private:** New uploads default to private for safety
+- **Validate File Size:** Consider adding client-side validation for large files
+- **Progress Tracking:** Implement chunked uploads with progress bars for large files
+- **Error Recovery:** Store temporary files with unique names to enable retry logic
+- **Metadata Defaults:** Pre-populate forms with intelligent defaults (e.g., tags from user's previous uploads)
+
+## Future Enhancements
+
+- **Thumbnail Upload:** Allow custom thumbnail selection
+- **Playlist Assignment:** Add videos directly to playlists
+- **Scheduled Publishing:** Schedule videos to go public at a specific time
+- **Advanced Metadata:** Support for custom categories, license types, and language settings
+- **Progress Indicators:** Real-time upload progress with chunked uploads

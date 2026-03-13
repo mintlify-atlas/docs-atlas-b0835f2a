@@ -1,0 +1,282 @@
+---
+title: 'Video Search'
+description: 'Search and discover YouTube videos using the YouTube Data API'
+icon: 'magnifying-glass'
+---
+
+## Overview
+
+The video search feature allows users to search for YouTube videos directly from the application using the YouTube Data API v3. Search results display video thumbnails, titles, descriptions, and channel information.
+
+## Search Implementation
+
+The `buscar_video` view (`views.py:108-141`) handles video search functionality:
+
+```python
+@login_required
+def buscar_video(request):
+    resultados = []
+    query = request.GET.get('q')
+    
+    if query:
+        youtube = get_youtube_service(request)
+        if youtube:
+            try:
+                # Buscamos videos
+                request_search = youtube.search().list(
+                    part="snippet",
+                    maxResults=9,
+                    q=query,
+                    type="video",
+                    videoEmbeddable='true'
+                )
+                response = request_search.execute()
+                
+                for item in response['items']:
+                    video = {
+                        'id': item['id']['videoId'],
+                        'titulo': item['snippet']['title'],
+                        'descripcion': item['snippet']['description'],
+                        'thumbnail': item['snippet']['thumbnails']['high']['url'],
+                        'canal': item['snippet']['channelTitle'],
+                    }
+                    resultados.append(video)
+            except Exception as e:
+                messages.error(request, f"Error con la API de YouTube: {e}")
+        else:
+            return redirect('google_login')
+
+    return render(request, 'buscar.html', {'resultados': resultados, 'query': query})
+```
+
+## How It Works
+
+<Steps>
+  <Step title="User Submits Query">
+    The user enters a search term in the search form. The query is sent via GET parameter `q` to `/buscar/`.
+  </Step>
+  
+  <Step title="Retrieve YouTube Service">
+    The view calls `get_youtube_service(request)` to obtain an authenticated YouTube API client from session credentials.
+  </Step>
+  
+  <Step title="Execute Search Request">
+    The API's `search().list()` method is called with search parameters to query YouTube's video database.
+  </Step>
+  
+  <Step title="Process Results">
+    Each video in the response is transformed into a dictionary containing display information.
+  </Step>
+  
+  <Step title="Render Results">
+    The processed results are passed to the template for display.
+  </Step>
+</Steps>
+
+## API Parameters
+
+The search request uses the following parameters:
+
+### Required Parameters
+
+<ParamField path="part" type="string" required>
+  Specifies the resource parts to include in the response. Set to `"snippet"` to retrieve basic video metadata.
+</ParamField>
+
+<ParamField path="q" type="string" required>
+  The search query term entered by the user.
+</ParamField>
+
+### Optional Parameters
+
+<ParamField path="maxResults" type="integer" default="9">
+  Maximum number of search results to return. Set to 9 for a 3x3 grid layout.
+</ParamField>
+
+<ParamField path="type" type="string" default="video">
+  Restricts search results to videos only (excludes channels and playlists).
+</ParamField>
+
+<ParamField path="videoEmbeddable" type="string" default="true">
+  Filters results to only embeddable videos, ensuring they can be displayed in the application.
+</ParamField>
+
+## Response Structure
+
+The YouTube API returns a JSON response with the following structure:
+
+```json
+{
+  "items": [
+    {
+      "id": {
+        "videoId": "dQw4w9WgXcQ"
+      },
+      "snippet": {
+        "title": "Video Title",
+        "description": "Video description...",
+        "channelTitle": "Channel Name",
+        "thumbnails": {
+          "high": {
+            "url": "https://i.ytimg.com/vi/..."
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+## Processed Video Data
+
+Each video is transformed into a Python dictionary (`views.py:128-134`):
+
+```python
+video = {
+    'id': item['id']['videoId'],
+    'titulo': item['snippet']['title'],
+    'descripcion': item['snippet']['description'],
+    'thumbnail': item['snippet']['thumbnails']['high']['url'],
+    'canal': item['snippet']['channelTitle'],
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Video ID" icon="hashtag">
+    Unique YouTube video identifier used for embedding and API operations.
+  </Card>
+  
+  <Card title="Title" icon="heading">
+    The video's title as displayed on YouTube.
+  </Card>
+  
+  <Card title="Description" icon="align-left">
+    Video description text (may be truncated in search results).
+  </Card>
+  
+  <Card title="Thumbnail" icon="image">
+    High-resolution thumbnail URL for display.
+  </Card>
+  
+  <Card title="Channel" icon="tv">
+    Name of the channel that uploaded the video.
+  </Card>
+</CardGroup>
+
+## Authentication Requirements
+
+The view is protected with the `@login_required` decorator:
+
+```python
+@login_required
+def buscar_video(request):
+```
+
+<Info>
+Unauthenticated users are automatically redirected to the login page.
+</Info>
+
+Additionally, if YouTube API credentials are not found in the session:
+
+```python
+youtube = get_youtube_service(request)
+if youtube:
+    # ... perform search
+else:
+    return redirect('google_login')
+```
+
+The user is redirected to re-authenticate with Google.
+
+## Error Handling
+
+The view includes try-except error handling for API failures:
+
+```python
+try:
+    # ... API request
+except Exception as e:
+    messages.error(request, f"Error con la API de YouTube: {e}")
+```
+
+Errors are displayed to the user via Django's messages framework.
+
+<Warning>
+Common errors include quota exceeded, network issues, or invalid authentication.
+</Warning>
+
+## URL Configuration
+
+The search route is defined in `urls.py:16`:
+
+```python
+path('buscar/', views.buscar_video, name='buscar'),
+```
+
+Access the search page at `/buscar/` with an optional `?q=search_term` parameter.
+
+## Example Usage
+
+### Basic Search
+
+Navigate to:
+```
+http://localhost:8000/buscar/?q=django+tutorial
+```
+
+### Empty State
+
+If no query is provided, an empty results list is returned:
+
+```python
+resultados = []
+query = request.GET.get('q')
+
+if query:
+    # ... perform search
+
+return render(request, 'buscar.html', {'resultados': resultados, 'query': query})
+```
+
+## Template Context
+
+The view passes two variables to the template:
+
+<ResponseField name="resultados" type="list">
+  List of video dictionaries containing search results.
+</ResponseField>
+
+<ResponseField name="query" type="string">
+  The original search query for display purposes.
+</ResponseField>
+
+## API Quota Considerations
+
+<Note>
+The YouTube Data API has daily quota limits. Each search request costs 100 quota units.
+</Note>
+
+**Optimization strategies:**
+- Limit `maxResults` to reduce quota usage per search
+- Implement caching for popular queries
+- Use pagination instead of retrieving all results at once
+
+## Future Enhancements
+
+<CardGroup cols={2}>
+  <Card title="Advanced Filters" icon="filter">
+    Add filters for duration, upload date, video definition, and more.
+  </Card>
+  
+  <Card title="Pagination" icon="ellipsis">
+    Implement next/previous page navigation using `pageToken` parameter.
+  </Card>
+  
+  <Card title="Sort Options" icon="arrow-down-wide-short">
+    Allow sorting by relevance, date, rating, or view count.
+  </Card>
+  
+  <Card title="Search History" icon="clock-rotate-left">
+    Store recent searches for quick access.
+  </Card>
+</CardGroup>

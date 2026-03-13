@@ -1,0 +1,530 @@
+---
+title: 'Database Configuration'
+description: 'Configure and set up MySQL database for YouTube Manager'
+icon: 'database'
+---
+
+## Overview
+
+YouTube Manager uses MySQL as its database backend with Django's ORM. The application requires MySQL 5.7 or higher with support for utf8mb4 character encoding.
+
+## Database Settings
+
+### Django Configuration
+
+The database is configured in `settings.py` using environment variables:
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASS'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
+    }
+}
+```
+
+### Configuration Parameters
+
+<ParamField path="ENGINE" type="string" required>
+  Django database backend engine.
+  
+  **Value:** `django.db.backends.mysql`
+  
+  <Note>
+  This is hardcoded in settings.py and uses the `mysqlclient` driver.
+  </Note>
+</ParamField>
+
+<ParamField path="NAME" type="string" required>
+  Database name from `DB_NAME` environment variable.
+  
+  **Example:** `youtube_manager`
+</ParamField>
+
+<ParamField path="USER" type="string" required>
+  Database username from `DB_USER` environment variable.
+  
+  **Required Permissions:**
+  - SELECT, INSERT, UPDATE, DELETE
+  - CREATE, ALTER, DROP (for migrations)
+  - INDEX, REFERENCES
+</ParamField>
+
+<ParamField path="PASSWORD" type="string" required>
+  Database password from `DB_PASS` environment variable.
+</ParamField>
+
+<ParamField path="HOST" type="string" required>
+  Database server hostname from `DB_HOST` environment variable.
+  
+  **Common values:** `localhost`, `127.0.0.1`, or remote server IP
+</ParamField>
+
+<ParamField path="PORT" type="string" required>
+  Database server port from `DB_PORT` environment variable.
+  
+  **Default:** `3306`
+</ParamField>
+
+### Database Options
+
+<ParamField path="OPTIONS.charset" type="string">
+  Character set for database connection.
+  
+  **Value:** `utf8mb4`
+  
+  **Why utf8mb4?**
+  - Full Unicode support including emojis
+  - Required for international video titles and descriptions
+  - Supports 4-byte UTF-8 characters
+</ParamField>
+
+<ParamField path="OPTIONS.init_command" type="string">
+  SQL command executed on connection initialization.
+  
+  **Value:** `SET sql_mode='STRICT_TRANS_TABLES'`
+  
+  **What it does:**
+  - Enables strict SQL mode
+  - Prevents invalid data insertion
+  - Ensures data integrity
+</ParamField>
+
+## Database Setup
+
+### Prerequisites
+
+<Steps>
+  <Step title="Install MySQL Server">
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    sudo apt update
+    sudo apt install mysql-server
+    sudo systemctl start mysql
+    sudo systemctl enable mysql
+    ```
+    
+    ```bash macOS
+    brew install mysql
+    brew services start mysql
+    ```
+    
+    ```bash Windows
+    # Download MySQL installer from:
+    # https://dev.mysql.com/downloads/installer/
+    # Run the installer and follow the setup wizard
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Install MySQL Client Library">
+    The `mysqlclient` Python package is required:
+    
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    # Install MySQL development headers
+    sudo apt install python3-dev default-libmysqlclient-dev build-essential
+    
+    # Install Python package
+    pip install mysqlclient
+    ```
+    
+    ```bash macOS
+    # Install MySQL client
+    brew install mysql-client
+    
+    # Set PKG_CONFIG_PATH
+    export PKG_CONFIG_PATH="/usr/local/opt/mysql-client/lib/pkgconfig"
+    
+    # Install Python package
+    pip install mysqlclient
+    ```
+    
+    ```bash Windows
+    # Install Visual C++ Build Tools first, then:
+    pip install mysqlclient
+    ```
+    </CodeGroup>
+    
+    <Note>
+    `mysqlclient` version 2.2.7 is specified in requirements.txt
+    </Note>
+  </Step>
+  
+  <Step title="Secure MySQL Installation">
+    Run the security script (Linux/macOS):
+    ```bash
+    sudo mysql_secure_installation
+    ```
+    
+    This will:
+    - Set root password
+    - Remove anonymous users
+    - Disable remote root login
+    - Remove test database
+  </Step>
+</Steps>
+
+### Creating the Database
+
+<Steps>
+  <Step title="Connect to MySQL">
+    ```bash
+    mysql -u root -p
+    ```
+    Enter your root password when prompted.
+  </Step>
+  
+  <Step title="Create Database">
+    ```sql
+    CREATE DATABASE youtube_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    ```
+    
+    <Note>
+    The `CHARACTER SET utf8mb4` ensures full Unicode support including emojis in video titles and descriptions.
+    </Note>
+  </Step>
+  
+  <Step title="Create Database User">
+    ```sql
+    CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY 'strong_password_here';
+    ```
+    
+    <Warning>
+    Replace `strong_password_here` with a secure password. Store it in your `.env` file.
+    </Warning>
+  </Step>
+  
+  <Step title="Grant Permissions">
+    ```sql
+    GRANT ALL PRIVILEGES ON youtube_manager.* TO 'youtube_user'@'localhost';
+    FLUSH PRIVILEGES;
+    ```
+    
+    For production, use minimal permissions:
+    ```sql
+    GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES 
+    ON youtube_manager.* TO 'youtube_user'@'localhost';
+    FLUSH PRIVILEGES;
+    ```
+  </Step>
+  
+  <Step title="Verify Database Creation">
+    ```sql
+    SHOW DATABASES;
+    USE youtube_manager;
+    SHOW TABLES;
+    ```
+    
+    Exit MySQL:
+    ```sql
+    EXIT;
+    ```
+  </Step>
+</Steps>
+
+### Configuring Environment Variables
+
+Update your `.env` file with the database credentials:
+
+```bash
+DB_NAME=youtube_manager
+DB_USER=youtube_user
+DB_PASS=strong_password_here
+DB_HOST=localhost
+DB_PORT=3306
+```
+
+## Database Schema
+
+### Models Overview
+
+The application includes two main models:
+
+#### VideoGuardado (Saved Videos)
+
+Stores videos that users save as favorites:
+
+```python
+class VideoGuardado(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    video_id = models.CharField(max_length=50)
+    titulo = models.CharField(max_length=255)
+    canal = models.CharField(max_length=255)
+    descripcion = models.TextField()
+    miniatura_url = models.URLField()
+    fecha_guardado = models.DateTimeField(auto_now_add=True)
+```
+
+**Fields:**
+- `user` - Foreign key to Django User model
+- `video_id` - YouTube video ID (up to 50 characters)
+- `titulo` - Video title (up to 255 characters)
+- `canal` - Channel name (up to 255 characters)
+- `descripcion` - Full video description (text)
+- `miniatura_url` - Thumbnail image URL
+- `fecha_guardado` - Timestamp when video was saved
+
+**Constraints:**
+- Unique together: (user, video_id) - prevents duplicate saves
+
+#### VideoSubido (Uploaded Videos)
+
+Stores videos uploaded by users through the CMS:
+
+```python
+class VideoSubido(models.Model):
+    ESTADOS = [
+        ('private', 'Privado'),
+        ('public', 'Público'),
+        ('unlisted', 'No listado'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    video_id = models.CharField(max_length=50, unique=True)
+    titulo = models.CharField(max_length=255)
+    descripcion = models.TextField()
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='private')
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+```
+
+**Fields:**
+- `user` - Foreign key to Django User model
+- `video_id` - YouTube video ID (unique, up to 50 characters)
+- `titulo` - Video title (up to 255 characters)
+- `descripcion` - Video description (text)
+- `estado` - Privacy status (private, public, unlisted)
+- `fecha_subida` - Upload timestamp
+
+**Constraints:**
+- Unique: video_id - each YouTube video appears only once
+
+## Database Migration
+
+### Running Migrations
+
+<Steps>
+  <Step title="Create Migration Files">
+    Generate migration files from models:
+    ```bash
+    python manage.py makemigrations
+    ```
+    
+    This creates migration files in `core/migrations/`
+  </Step>
+  
+  <Step title="Review Migrations">
+    View pending migrations:
+    ```bash
+    python manage.py showmigrations
+    ```
+    
+    View SQL for a specific migration:
+    ```bash
+    python manage.py sqlmigrate core 0001
+    ```
+  </Step>
+  
+  <Step title="Apply Migrations">
+    Apply all pending migrations:
+    ```bash
+    python manage.py migrate
+    ```
+    
+    This will:
+    - Create all Django system tables
+    - Create `core_videoguardado` table
+    - Create `core_videosubido` table
+    - Set up indexes and constraints
+  </Step>
+  
+  <Step title="Verify Tables">
+    Check that tables were created:
+    ```bash
+    python manage.py dbshell
+    ```
+    
+    Then in MySQL:
+    ```sql
+    SHOW TABLES;
+    DESCRIBE core_videoguardado;
+    DESCRIBE core_videosubido;
+    EXIT;
+    ```
+  </Step>
+</Steps>
+
+### Common Migration Commands
+
+```bash
+# Create migrations for all apps
+python manage.py makemigrations
+
+# Create migrations for specific app
+python manage.py makemigrations core
+
+# Apply all migrations
+python manage.py migrate
+
+# Apply migrations for specific app
+python manage.py migrate core
+
+# Rollback to specific migration
+python manage.py migrate core 0001
+
+# Show migration status
+python manage.py showmigrations
+
+# Show SQL for migration
+python manage.py sqlmigrate core 0001
+```
+
+## Database Management
+
+### Backup Database
+
+```bash
+# Backup entire database
+mysqldump -u youtube_user -p youtube_manager > backup.sql
+
+# Backup with timestamp
+mysqldump -u youtube_user -p youtube_manager > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Backup specific tables
+mysqldump -u youtube_user -p youtube_manager core_videoguardado core_videosubido > backup_videos.sql
+```
+
+### Restore Database
+
+```bash
+# Restore from backup
+mysql -u youtube_user -p youtube_manager < backup.sql
+```
+
+### Reset Database
+
+<Warning>
+This will delete all data. Use with caution!
+</Warning>
+
+```bash
+# Drop and recreate database
+mysql -u root -p -e "DROP DATABASE youtube_manager; CREATE DATABASE youtube_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# Reapply migrations
+python manage.py migrate
+```
+
+## Troubleshooting
+
+### Connection Errors
+
+**Problem:** `django.db.utils.OperationalError: (2002, "Can't connect to MySQL server")`
+
+**Solutions:**
+1. Verify MySQL is running:
+   ```bash
+   sudo systemctl status mysql  # Linux
+   brew services list  # macOS
+   ```
+
+2. Check connection parameters in `.env`
+3. Test MySQL connection:
+   ```bash
+   mysql -u youtube_user -p -h localhost
+   ```
+
+### Authentication Errors
+
+**Problem:** `Access denied for user 'youtube_user'@'localhost'`
+
+**Solutions:**
+1. Verify credentials in `.env` file
+2. Check user exists and has correct permissions:
+   ```sql
+   SELECT User, Host FROM mysql.user WHERE User='youtube_user';
+   SHOW GRANTS FOR 'youtube_user'@'localhost';
+   ```
+
+### Character Encoding Issues
+
+**Problem:** Emojis or special characters not displaying correctly.
+
+**Solution:**
+Verify database and tables use utf8mb4:
+```sql
+SHOW CREATE DATABASE youtube_manager;
+SHOW CREATE TABLE core_videoguardado;
+```
+
+Convert if needed:
+```sql
+ALTER DATABASE youtube_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+ALTER TABLE core_videoguardado CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+ALTER TABLE core_videosubido CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### Migration Errors
+
+**Problem:** `django.db.migrations.exceptions.InconsistentMigrationHistory`
+
+**Solution:**
+1. Check migration status:
+   ```bash
+   python manage.py showmigrations
+   ```
+
+2. If in development, reset migrations:
+   ```bash
+   python manage.py migrate core zero
+   python manage.py migrate
+   ```
+
+3. For production, use `--fake` carefully:
+   ```bash
+   python manage.py migrate --fake core 0001
+   ```
+
+## Performance Optimization
+
+### Indexes
+
+The models automatically create indexes on:
+- Foreign keys (`user` fields)
+- Unique fields (`video_id` in VideoSubido)
+- Unique together constraints
+
+### Query Optimization
+
+```python
+# Use select_related for foreign keys
+videos = VideoGuardado.objects.select_related('user').all()
+
+# Use only() to fetch specific fields
+videos = VideoGuardado.objects.only('video_id', 'titulo')
+
+# Use exists() instead of count()
+if VideoGuardado.objects.filter(user=user, video_id=vid_id).exists():
+    # video already saved
+```
+
+### Connection Pooling
+
+For production, consider using connection pooling:
+
+```python
+DATABASES = {
+    'default': {
+        # ... existing config ...
+        'CONN_MAX_AGE': 600,  # 10 minutes
+    }
+}
+```
