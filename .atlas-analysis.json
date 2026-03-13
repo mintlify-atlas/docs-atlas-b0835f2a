@@ -1,0 +1,82 @@
+{
+  "projectType": "saas",
+  "projectName": "YouTube Manager",
+  "projectDescription": "A Django-based web application for managing YouTube videos with search, upload, and playlist features through Google OAuth.",
+  "theme": "almond",
+  "primaryColor": "#FF0000",
+  "lightColor": "#FF4444",
+  "darkColor": "#CC0000",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/authentication",
+              "features/video-search",
+              "features/saved-videos",
+              "features/video-upload",
+              "features/privacy-management"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment",
+              "configuration/database",
+              "configuration/google-api"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Components",
+            "pages": [
+              "api/models",
+              "api/views",
+              "api/forms"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Google OAuth authentication with YouTube API integration",
+    "Search and browse YouTube videos",
+    "Save favorite videos to personal playlists",
+    "Upload videos directly to YouTube",
+    "Manage video privacy settings (public, private, unlisted)",
+    "Multi-user support with MySQL database"
+  ],
+  "publicApiSurface": [
+    "login_view",
+    "google_login",
+    "google_callback",
+    "logout_view",
+    "buscar_video",
+    "guardar_video",
+    "mi_lista",
+    "eliminar_video",
+    "subir_video_youtube",
+    "mis_subidos",
+    "cambiar_estado_video",
+    "borrar_video_subido",
+    "VideoGuardado",
+    "VideoSubido",
+    "VideoUploadForm"
+  ]
+}
